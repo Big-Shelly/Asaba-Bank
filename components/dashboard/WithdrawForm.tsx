@@ -1,145 +1,42 @@
-// components/dashboard/WithdrawForm.tsx
+// components/dashboard/WithdrawModal.tsx
 'use client'; // This directive marks the component as a Client Component.
 
-import { useState } from 'react';
-// Import createBrowserClient for client-side Supabase interactions.
-// This is the correct way to initialize the Supabase client in client components
-// for Next.js App Router.
-import { createBrowserClient } from '@supabase/ssr';
-import toast from 'react-hot-toast'; // Assuming react-hot-toast is used for notifications
+import { useState } from 'react'; // useState might be used for local modal state, e.g., input fields if any
 
-interface WithdrawFormProps {
-  userId: string;
-  onWithdrawSuccess: () => void; // Callback to refresh balance/transactions after withdrawal
+// Define the props interface for the WithdrawModal component
+interface WithdrawModalProps {
+  isOpen: boolean; // Controls the visibility of the modal
+  onClose: () => void; // Callback function to close the modal
+  onWithdraw: () => Promise<void>; // Callback function to trigger the withdrawal logic in the parent
+  amount: number; // The amount to be confirmed for withdrawal
 }
 
-export default function WithdrawForm({ userId, onWithdrawSuccess }: WithdrawFormProps) {
-  const [amount, setAmount] = useState<number>(0);
-  const [loading, setLoading] = useState<boolean>(false);
-
-  // Initialize the Supabase client for client-side use.
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
-  const handleWithdraw = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-
-    if (amount <= 0) {
-      toast.error('Please enter a positive amount to withdraw.');
-      setLoading(false);
-      return;
-    }
-    if (!userId) {
-      toast.error('User not logged in.');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      // --- IMPORTANT: This is a simplified client-side transaction logic. ---
-      // For production-grade applications, especially for financial transactions,
-      // it is highly recommended to perform sensitive operations like
-      // updating balances via secure server-side functions (e.g., Supabase Functions,
-      // Next.js API Routes, or Server Actions) to enforce security rules and prevent tampering.
-
-      // Fetch current balance
-      const { data: currentBalanceData, error: fetchError } = await supabase
-        .from('balances')
-        .select('amount')
-        .eq('user_id', userId)
-        .single();
-
-      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "No rows found"
-        throw fetchError;
-      }
-
-      const currentBalance = currentBalanceData?.amount || 0;
-
-      if (amount > currentBalance) {
-        toast.error('Insufficient funds.');
-        setLoading(false);
-        return;
-      }
-
-      const newBalance = currentBalance - amount;
-
-      // Update balance
-      const { error: updateError } = await supabase
-        .from('balances')
-        .upsert(
-          { user_id: userId, amount: newBalance },
-          { onConflict: 'user_id' }
-        );
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      // Record the withdrawal transaction
-      const { error: transactionError } = await supabase
-        .from('transactions') // Assuming a 'transactions' table
-        .insert({
-          sender_user_id: userId,
-          amount: amount,
-          type: 'withdrawal',
-          status: 'completed',
-          // For withdrawals, receiver_account_number, bank_name, routing_number, method
-          // might be required depending on your schema. For simplicity, leaving them out
-          // or setting to defaults if not directly applicable.
-          receiver_account_number: 'N/A', // Placeholder
-          bank_name: 'N/A', // Placeholder
-          routing_number: 'N/A', // Placeholder
-          method: 'Bank Transfer', // Example method
-        });
-
-      if (transactionError) {
-        console.error('Error recording withdrawal transaction:', transactionError.message);
-        // Even if transaction recording fails, balance update might have succeeded.
-        // Consider robust rollback/compensation logic for production.
-      }
-
-      toast.success('Withdrawal successful!');
-      setAmount(0); // Reset amount input
-      onWithdrawSuccess(); // Trigger callback to refresh parent component's data (e.g., balance)
-
-    } catch (error: any) {
-      console.error('Withdrawal error:', error.message);
-      toast.error(`Withdrawal failed: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+export default function WithdrawModal({ isOpen, onClose, onWithdraw, amount }: WithdrawModalProps) {
+  // If the modal is not open, return null to render nothing
+  if (!isOpen) {
+    return null;
+  }
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-4">Withdraw Funds</h2>
-      <form onSubmit={handleWithdraw}>
-        <div className="mb-4">
-          <label htmlFor="withdrawAmount" className="block text-gray-700 text-sm font-bold mb-2">
-            Amount
-          </label>
-          <input
-            type="number"
-            id="withdrawAmount"
-            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-            value={amount}
-            onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-            min="0"
-            required
-            disabled={loading}
-          />
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+        <h3 className="text-xl font-bold mb-4">Confirm Withdrawal</h3>
+        <p className="mb-4">Are you sure you want to withdraw ${amount.toFixed(2)}?</p>
+        <div className="flex justify-end space-x-4">
+          <button
+            onClick={onClose}
+            className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onWithdraw} // Call the onWithdraw callback passed from the parent
+            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Confirm Withdrawal
+          </button>
         </div>
-        <button
-          type="submit"
-          className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-          disabled={loading}
-        >
-          {loading ? 'Processing...' : 'Withdraw'}
-        </button>
-      </form>
+      </div>
     </div>
   );
 }
