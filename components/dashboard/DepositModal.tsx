@@ -1,94 +1,38 @@
 // components/dashboard/DepositModal.tsx
-import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client'; // <-- UPDATED IMPORT
+// (This is a conceptual representation, adapt to your actual file structure)
 
-// Define interfaces
-interface User {
-  id: string;
-  balance: number;
-}
-
+// Define the props interface for DepositModal
 interface DepositModalProps {
   isOpen: boolean;
   onClose: () => void;
-  userId: string;
-  onDeposit: (amount: number) => void;
+  onDeposit: () => Promise<void>;
+  amount: number; // <--- ADD THIS LINE
+  // Add any other props your DepositModal might already be using
 }
 
-const DepositModal = ({ isOpen, onClose, userId, onDeposit }: DepositModalProps) => {
-  const [amount, setAmount] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const supabase = createClient(); // <-- USE THE NEW CLIENT FUNCTION
-
-  const handleDeposit = async () => {
-    const depositAmount = parseFloat(amount);
-    if (isNaN(depositAmount) || depositAmount <= 0) {
-      setError('Please enter a valid amount');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // First, get the current user's balance
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('balance')
-        .eq('id', userId)
-        .single();
-
-      if (userError || !userData) {
-        throw userError || new Error('User not found');
-      }
-
-      const newBalance = userData.balance + depositAmount;
-
-      // Now, update the balance
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ balance: newBalance })
-        .eq('id', userId);
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      onDeposit(newBalance);
-      onClose();
-    } catch (error: any) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
-      setAmount('');
-    }
-  };
-
+export default function DepositModal({ isOpen, onClose, onDeposit, amount }: DepositModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-      <div className="bg-white p-6 rounded-lg shadow-lg">
-        <h2 className="text-xl font-bold mb-4">Deposit Funds</h2>
-        {error && <p className="text-red-500 mb-4">{error}</p>}
-        <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="Amount"
-          className="border p-2 w-full mb-4"
-          disabled={loading}
-        />
-        <div className="flex justify-end space-x-2">
-          <button onClick={onClose} className="bg-gray-300 p-2 rounded" disabled={loading}>Cancel</button>
-          <button onClick={handleDeposit} className="bg-blue-500 text-white p-2 rounded" disabled={loading}>
-            {loading ? 'Depositing...' : 'Deposit'}
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg shadow-lg w-96">
+        <h3 className="text-xl font-bold mb-4">Confirm Deposit</h3>
+        <p className="mb-4">Are you sure you want to deposit ${amount.toFixed(2)}?</p> {/* Use the amount prop */}
+        <div className="flex justify-end space-x-4">
+          <button
+            onClick={onClose}
+            className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onDeposit}
+            className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Confirm
           </button>
         </div>
       </div>
     </div>
   );
-};
-
-export default DepositModal;
+}
