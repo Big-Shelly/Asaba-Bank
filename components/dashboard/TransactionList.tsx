@@ -7,11 +7,13 @@ import React, { useEffect, useState } from 'react';
 // for Next.js App Router.
 import { createBrowserClient } from '@supabase/ssr';
 import { useAuth } from '@/hooks/useAuth'; // Assuming useAuth is a client-side hook
-import Transactions from './Transactions'; // Assuming this component exists and displays transactions
+// Assuming 'Transactions' component is designed to display a list of transactions
+// If you have a separate 'Transactions' component, ensure its types are consistent.
+// For this fix, we are assuming TransactionList itself displays the list.
 import toast from 'react-hot-toast'; // Assuming react-hot-toast is used for notifications
 
 // Define the interface for a Transaction object, matching your Supabase table structure
-// Updated to include properties expected by the 'Transactions' component.
+// This interface should be consistent across all components that handle Transaction data.
 interface Transaction {
   id: string;
   sender_user_id: string;
@@ -20,100 +22,78 @@ interface Transaction {
   status: 'completed' | 'pending' | 'failed'; // Example statuses
   created_at: string;
   type: 'deposit' | 'withdrawal' | 'transfer'; // Example transaction types
-  // Crucial fix: Make these properties required strings, and ensure they are mapped to strings.
   bank_name: string;
   routing_number: string;
-  method: string; // e.g., 'bank_transfer', 'card', 'cash'
-
-  // 'account_number' was already made required in the previous fix.
-  account_number: string;
+  method: string;
+  account_number: string; // This was added in previous fixes to match expected props
 }
 
 // Define the props for the TransactionList component
+// Crucial fix: Add the 'transactions' prop here.
 interface TransactionListProps {
-  // If this component receives any props, define them here.
-  // For example, if it needs a specific user ID passed from a parent:
-  // userId: string;
+  transactions: Transaction[]; // Expects an array of Transaction objects
 }
 
-export default function TransactionList({}: TransactionListProps) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const { user } = useAuth(); // Get user from your auth hook
+export default function TransactionList({ transactions }: TransactionListProps) {
+  // Removed internal state for transactions, loading, error, and Supabase client
+  // as this component now receives 'transactions' directly as a prop.
+  // If this component needs to fetch its own data, that logic would remain.
+  // For now, it acts as a display component for the passed transactions.
 
-  // Initialize the Supabase client for client-side use.
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  // The useAuth hook and Supabase client are not directly needed here
+  // if this component's sole purpose is to display the 'transactions' prop.
+  // If you need them for other functionalities (e.g., filtering, pagination),
+  // you would re-add them.
+  // const { user } = useAuth();
+  // const supabase = createBrowserClient(
+  //   process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  //   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  // );
 
-  // useEffect to fetch transactions when the component mounts or user changes
-  useEffect(() => {
-    const fetchTransactions = async () => {
-      if (!user?.id) {
-        setError('User not authenticated. Cannot fetch transactions.');
-        setLoading(false);
-        return;
-      }
+  // The fetchData useEffect is no longer needed here if transactions are passed as props.
+  // useEffect(() => {
+  //   const fetchTransactions = async () => { /* ... */ };
+  //   fetchTransactions();
+  // }, [user?.id, supabase]);
 
-      setLoading(true);
-      setError(null); // Clear previous errors
-
-      try {
-        // Fetch transactions where the current user is either the sender or receiver
-        const { data, error: fetchError } = await supabase
-          .from('transactions') // Query your 'transactions' table
-          .select('*') // Select all columns
-          .or(`sender_user_id.eq.${user.id},receiver_user_id.eq.${user.id}`) // Assuming a receiver_user_id column or similar
-          .order('created_at', { ascending: false }); // Order by creation date, newest first
-
-        if (fetchError) {
-          throw fetchError;
-        }
-
-        // Before setting transactions, ensure each object has the required 'string' properties.
-        // Map receiver_account_number to account_number, and ensure other required fields
-        // are strings, defaulting to an empty string if they are null/undefined from the DB.
-        const formattedTransactions = (data || []).map(t => ({
-          ...t,
-          account_number: t.receiver_account_number || '', // Ensure account_number is always a string
-          bank_name: t.bank_name || '', // Ensure bank_name is always a string
-          routing_number: t.routing_number || '', // Ensure routing_number is always a string
-          method: t.method || '', // Ensure method is always a string
-        })) as Transaction[]; // Assert type after mapping
-
-        setTransactions(formattedTransactions); // Update state with fetched transactions, or an empty array if null
-      } catch (err: any) {
-        console.error('Error fetching transactions:', err.message);
-        setError(`Failed to load transactions: ${err.message}`);
-        toast.error(`Failed to load transactions: ${err.message}`);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTransactions();
-  }, [user?.id, supabase]); // Dependencies: re-run if user.id or supabase client changes
-
-  if (loading && !transactions.length) { // Show loading only if no transactions are loaded yet
-    return <div className="text-center p-6">Loading transactions...</div>;
-  }
-
-  if (error) {
-    return <div className="text-center p-6 text-red-600">Error: {error}</div>;
+  // Simplified rendering based on transactions prop
+  if (transactions.length === 0) {
+    return <p className="text-gray-600">No transactions found.</p>;
   }
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-4">All Transactions</h2>
+      {/* Assuming the title is handled by the parent component, or can be added here */}
+      {/* <h2 className="text-2xl font-bold mb-4">All Transactions</h2> */}
 
-      {transactions.length === 0 ? (
-        <p className="text-gray-600">No transactions found.</p>
-      ) : (
-        // Assuming 'Transactions' component is designed to display a list of transactions
-        <Transactions transactions={transactions} />
-      )}
+      <ul className="space-y-4">
+        {transactions.map((transaction) => (
+          <li key={transaction.id} className="p-4 border border-gray-200 rounded-md shadow-sm bg-white">
+            <div className="flex justify-between items-center mb-2">
+              <p className="font-semibold text-lg">
+                {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}: ${transaction.amount.toFixed(2)}
+              </p>
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                transaction.status === 'completed' ? 'bg-green-100 text-green-800' :
+                transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                'bg-red-100 text-red-800'
+              }`}>
+                {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
+              </span>
+            </div>
+            <p className="text-gray-700 text-sm">
+              To/From Account: {transaction.receiver_account_number}
+            </p>
+            {/* Display other transaction details if available and relevant */}
+            {transaction.bank_name && <p className="text-gray-700 text-sm">Bank: {transaction.bank_name}</p>}
+            {transaction.routing_number && <p className="text-gray-700 text-sm">Routing: {transaction.routing_number}</p>}
+            {transaction.method && <p className="text-gray-700 text-sm">Method: {transaction.method}</p>}
+            <p className="text-gray-500 text-xs">
+              Date: {new Date(transaction.created_at).toLocaleString()}
+            </p>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
