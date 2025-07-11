@@ -1,100 +1,98 @@
-import { useRouter } from 'next/router';
-import { useState, useEffect } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
-import { useAuth } from '@/hooks/useAuth';
+// components/Footer.tsx
+'use client'; // This directive marks the component as a Client Component.
 
-interface User {
-  id: string;
-  email?: string;
-}
-
-interface AuthContext {
-  user: User | null;
-  isLoading: boolean;
-}
+import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Correct import for useRouter in Next.js App Router
+import { useAuth } from '@/hooks/useAuth'; // Import your custom useAuth hook
 
 export default function Footer() {
   const router = useRouter();
-  const { user, isLoading } = useAuth() as AuthContext;
+  // Corrected: Destructure 'loading' instead of 'isLoading' as per useAuth hook's return type.
+  // Removed 'as AuthContext' as it was causing the type mismatch.
+  const { user, loading } = useAuth();
 
-  const [supabase] = useState(() =>
-    createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get: (name: string) => {
-            if (typeof document !== 'undefined') {
-              const value = `; ${document.cookie}`;
-              const parts = value.split(`; ${name}=`);
-              if (parts.length === 2) return parts.pop()?.split(';').shift();
-            }
-            return undefined;
-          },
-          set: (name: string, value: string, options: { [key: string]: any }) => {
-            if (typeof document !== 'undefined') {
-              document.cookie = `${name}=${value}; path=/; max-age=${options['max-age'] || 0}`;
-            }
-          },
-          remove: (name: string) => {
-            if (typeof document !== 'undefined') {
-              document.cookie = `${name}=; path=/; max-age=0`;
-            }
-          },
-        },
-      }
-    )
-  );
+  // The Supabase client initialization below is redundant if useAuth already handles it
+  // and if the Footer doesn't need a separate client instance for other operations.
+  // If you need a Supabase client directly in Footer for non-auth related tasks,
+  // you would initialize it here using createBrowserClient similar to other components.
+  // For now, assuming it's not needed and removing it.
+  // const [supabase] = useState(() =>
+  //   createBrowserClient(
+  //     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  //     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  //   )
+  // );
 
-  const [logoutMessage, setLogoutMessage] = useState('');
-  const [logoutTimer, setLogoutTimer] = useState<NodeJS.Timeout | undefined>();
-
-  useEffect(() => {
-    if (logoutMessage === 'Logging out...') {
-      const timer = setTimeout(() => {
-        router.push('/auth/login');
-      }, 3000);
-      setLogoutTimer(timer);
-    }
-    return () => {
-      if (logoutTimer) clearTimeout(logoutTimer);
-    };
-  }, [logoutMessage, router, logoutTimer]);
-
-  const handleLogout = async () => {
-    if (!user) return;
-    try {
-      setLogoutMessage('Logging out...');
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error signing out:', error);
-      setLogoutMessage('Logout failed');
-    }
-  };
+  // You can use 'loading' to conditionally render parts of the footer if needed
+  // For example, showing a loading spinner for auth status.
 
   return (
-    <footer className="bg-blue-700 text-white py-6 mt-12">
-      <div className="container mx-auto flex justify-between items-center">
-        <p className="text-center">© {new Date().getFullYear()} Asaba Bank. All rights reserved.</p>
-        {isLoading ? (
-          <p>Loading...</p>
-        ) : user ? (
-          <button
-            onClick={handleLogout}
-            disabled={logoutMessage === 'Logging out...'}
-            className="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-lg font-semibold text-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {logoutMessage || 'Logout'}
-          </button>
-        ) : (
-          <button
-            onClick={() => router.push('/auth/login')}
-            className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-lg font-semibold text-lg transition-all duration-300"
-          >
-            Sign In
-          </button>
-        )}
+    <footer className="bg-gray-800 text-white p-6 mt-12 shadow-inner">
+      <div className="container mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* About Section */}
+        <div>
+          <h3 className="text-xl font-bold mb-4 text-blue-400">Asaba Bank</h3>
+          <p className="text-gray-400 text-sm">
+            Your trusted partner for secure and efficient banking. We are committed to providing you
+            with the best financial services.
+          </p>
+        </div>
+
+        {/* Quick Links */}
+        <div>
+          <h3 className="text-xl font-bold mb-4 text-blue-400">Quick Links</h3>
+          <ul className="space-y-2">
+            <li>
+              <Link href="/dashboard" className="text-gray-400 hover:text-blue-300 transition-colors">
+                Dashboard
+              </Link>
+            </li>
+            <li>
+              <Link href="/transactions" className="text-gray-400 hover:text-blue-300 transition-colors">
+                Transactions
+              </Link>
+            </li>
+            <li>
+              <Link href="/profile" className="text-gray-400 hover:text-blue-300 transition-colors">
+                Profile
+              </Link>
+            </li>
+            {/* Conditionally render Login/Register or Logout based on user status */}
+            {!user && !loading && ( // Show these if no user and not loading
+              <>
+                <li>
+                  <Link href="/login" className="text-gray-400 hover:text-blue-300 transition-colors">
+                    Login
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/register" className="text-gray-400 hover:text-blue-300 transition-colors">
+                    Register
+                  </Link>
+                </li>
+              </>
+            )}
+            {/* If you had a logout function here, it would be triggered by a button */}
+          </ul>
+        </div>
+
+        {/* Contact Information */}
+        <div>
+          <h3 className="text-xl font-bold mb-4 text-blue-400">Contact Us</h3>
+          <p className="text-gray-400 text-sm">
+            123 Bank Street, Financial District, Asaba, Nigeria
+          </p>
+          <p className="text-gray-400 text-sm mt-2">
+            Email: support@asababank.com
+          </p>
+          <p className="text-gray-400 text-sm mt-2">
+            Phone: +234 800 123 4567
+          </p>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-700 mt-8 pt-6 text-center text-gray-500 text-sm">
+        &copy; {new Date().getFullYear()} Asaba Bank. All rights reserved.
       </div>
     </footer>
   );
