@@ -10,13 +10,14 @@ import { useAuth } from '@/hooks/useAuth'; // Assuming useAuth is a client-side 
 import RecipientManager from './RecipientManager'; // Import RecipientManager as seen in your error log
 import toast from 'react-hot-toast'; // Assuming react-hot-toast is used for notifications
 
-// Define the props for the WithdrawalForm component (adjust as needed)
+// Define the props for the WithdrawalForm component
 interface WithdrawalFormProps {
-  // If this component receives props (e.g., userId from a parent), define them here.
-  // For example: userId: string;
+  userId: string; // Explicitly define userId as a required string prop
+  onWithdrawSuccess: () => void; // Explicitly define onWithdrawSuccess as a required function prop
 }
 
-export default function WithdrawalForm({}: WithdrawalFormProps) {
+// Destructure the props directly in the function signature
+export default function WithdrawalForm({ userId, onWithdrawSuccess }: WithdrawalFormProps) {
   const [amount, setAmount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(false);
   const [balance, setBalance] = useState<number | null>(null);
@@ -41,7 +42,7 @@ export default function WithdrawalForm({}: WithdrawalFormProps) {
     setError(null);
 
     try {
-      const { data, error: fetchError } = await supabase
+      const { data: currentBalanceData, error: fetchError } = await supabase
         .from('balances') // Assuming your balance data is in a 'balances' table
         .select('amount') // Select the 'amount' column
         .eq('user_id', user.id) // Filter by the current user's ID
@@ -51,7 +52,7 @@ export default function WithdrawalForm({}: WithdrawalFormProps) {
         throw fetchError;
       }
 
-      setBalance(data?.amount ?? 0); // Update balance state, default to 0 if no data
+      setBalance(currentBalanceData?.amount ?? 0); // Update balance state, default to 0 if no data
     } catch (err: any) {
       console.error('Error fetching balance:', err.message);
       setError(`Failed to load balance: ${err.message}`);
@@ -61,8 +62,13 @@ export default function WithdrawalForm({}: WithdrawalFormProps) {
     }
   };
 
-  // useEffect to fetch balance when the component mounts or user changes
+  // Effect to fetch balance when the component mounts or user changes
   useEffect(() => {
+    if (!user?.id) { // Ensure user ID is available before attempting to fetch
+      setBalance(null); // Reset balance if user is not logged in
+      setLoading(false);
+      return;
+    }
     fetchBalance();
   }, [user?.id, supabase]); // Dependencies: re-run if user.id or supabase client changes
 
@@ -75,7 +81,7 @@ export default function WithdrawalForm({}: WithdrawalFormProps) {
       setLoading(false);
       return;
     }
-    if (!user?.id) {
+    if (!userId) { // Use the prop userId here
       toast.error('User not logged in.');
       setLoading(false);
       return;
@@ -99,7 +105,7 @@ export default function WithdrawalForm({}: WithdrawalFormProps) {
       const { error: updateError } = await supabase
         .from('balances')
         .upsert(
-          { user_id: user.id, amount: newBalance },
+          { user_id: userId, amount: newBalance }, // Use the prop userId here
           { onConflict: 'user_id' }
         );
 
@@ -111,7 +117,7 @@ export default function WithdrawalForm({}: WithdrawalFormProps) {
       const { error: transactionError } = await supabase
         .from('transactions') // Assuming a 'transactions' table
         .insert({
-          sender_user_id: user.id,
+          sender_user_id: userId, // Use the prop userId here
           amount: amount,
           type: 'withdrawal',
           status: 'completed',
@@ -132,8 +138,8 @@ export default function WithdrawalForm({}: WithdrawalFormProps) {
 
       toast.success('Withdrawal successful!');
       setAmount(0); // Reset amount input
-      fetchBalance(); // Re-fetch balance to reflect the change
-      // You might also want to trigger a refresh for transaction history here if needed
+      onWithdrawSuccess(); // Call the success callback passed from the parent
+
     } catch (error: any) {
       console.error('Withdrawal error:', error.message);
       toast.error(`Withdrawal failed: ${error.message}`);
@@ -150,7 +156,7 @@ export default function WithdrawalForm({}: WithdrawalFormProps) {
     return <div className="text-center p-6 text-red-600">Error: {error}</div>;
   }
 
-  if (!user?.id) {
+  if (!user?.id) { // Check user from useAuth for conditional rendering
     return <div className="text-center p-6 text-gray-600">Please log in to make a withdrawal.</div>;
   }
 
@@ -194,7 +200,7 @@ export default function WithdrawalForm({}: WithdrawalFormProps) {
       <div className="mt-8">
         <h3 className="text-xl font-bold mb-4">Manage Recipient Accounts (for Transfers)</h3>
         {/* Pass userId to RecipientManager if it needs it */}
-        <RecipientManager userId={user.id} />
+        <RecipientManager userId={userId} /> {/* Use the prop userId here */}
       </div>
     </div>
   );
