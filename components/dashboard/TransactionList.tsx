@@ -11,6 +11,7 @@ import Transactions from './Transactions'; // Assuming this component exists and
 import toast from 'react-hot-toast'; // Assuming react-hot-toast is used for notifications
 
 // Define the interface for a Transaction object, matching your Supabase table structure
+// Updated to include properties expected by the 'Transactions' component.
 interface Transaction {
   id: string;
   sender_user_id: string;
@@ -19,6 +20,11 @@ interface Transaction {
   status: 'completed' | 'pending' | 'failed'; // Example statuses
   created_at: string;
   type: 'deposit' | 'withdrawal' | 'transfer'; // Example transaction types
+  // Added properties based on the error message:
+  bank_name?: string; // Assuming these might be optional or only present for certain types
+  routing_number?: string;
+  // account_number is already present, but ensure its type matches if it was different
+  method?: string; // e.g., 'bank_transfer', 'card', 'cash'
 }
 
 // Define the props for the TransactionList component
