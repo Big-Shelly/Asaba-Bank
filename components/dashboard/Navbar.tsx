@@ -48,7 +48,8 @@ export default function Navbar({}: NavbarProps) {
 
     // Clean up the auth listener when the component unmounts
     return () => {
-      authListener?.unsubscribe();
+      // Corrected: Access 'unsubscribe' method via the 'subscription' property
+      authListener?.subscription?.unsubscribe();
     };
   }, [supabase]); // Re-run if supabase client instance changes (though it's constant here)
 
