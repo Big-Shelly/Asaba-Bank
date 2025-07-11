@@ -1,245 +1,143 @@
-import { useState } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
+// components/dashboard/WithdrawForm.tsx
+'use client'; // This directive marks the component as a Client Component.
 
-interface Props {
+import { useState } from 'react';
+// Import createBrowserClient for client-side Supabase interactions.
+// This is the correct way to initialize the Supabase client in client components
+// for Next.js App Router.
+import { createBrowserClient } from '@supabase/ssr';
+import toast from 'react-hot-toast'; // Assuming react-hot-toast is used for notifications
+
+interface WithdrawFormProps {
   userId: string;
-  userEmail: string;  // <--- added email here
-  withdrawalCount: number;
-  checkingBalance: number;
-  savingsBalance: number;
-  onSuccess?: (summary: {
-    amount: number;
-    bankName: string;
-    routingNumber: string;
-    accountNumber: string;
-    transferType: string;
-  }) => void;
-  onError?: (message: string) => void;
+  onWithdrawSuccess: () => void; // Callback to refresh balance/transactions after withdrawal
 }
 
-export default function WithdrawalForm({
-  userId,
-  userEmail,
-  withdrawalCount,
-  checkingBalance,
-  savingsBalance,
-  onSuccess,
-  onError,
-}: Props) {
-  const supabase = useSupabaseClient();
-  const [accountType, setAccountType] = useState<'Checking' | 'Savings'>('Checking');
-  const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState<'ACH' | 'Wire'>('ACH');
-  const [form, setForm] = useState({
-    bankName: '',
-    routingNumber: '',
-    accountNumber: '',
-    accountName: '',
-    swiftCode: ''
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [feePaid, setFeePaid] = useState(false);
+export default function WithdrawForm({ userId, onWithdrawSuccess }: WithdrawFormProps) {
+  const [amount, setAmount] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(false);
 
-  const isFinalWithdrawal = withdrawalCount >= 2;
-  const disabled = isFinalWithdrawal && !feePaid;
-  const balance = accountType === 'Checking' ? checkingBalance : savingsBalance;
-  const formattedBalance = balance.toFixed(2);
+  // Initialize the Supabase client for client-side use.
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-
-    if (disabled) return;
-
-    const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0) {
-      setError('Please enter a valid amount');
-      return;
-    }
-
-    if (amt > balance) {
-      setError('Insufficient funds');
-      return;
-    }
-
     setLoading(true);
 
+    if (amount <= 0) {
+      toast.error('Please enter a positive amount to withdraw.');
+      setLoading(false);
+      return;
+    }
+    if (!userId) {
+      toast.error('User not logged in.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const { error: insertError } = await supabase.from('withdrawals').insert([{
-        user_id: userId,
-        email: userEmail,  // <-- use userEmail here
-        account_type: accountType,
-        amount: amt,
-        method,
-        bank_name: form.bankName,
-        routing_number: form.routingNumber,
-        account_number: form.accountNumber,
-        account_name: form.accountName,
-        swift_code: form.swiftCode,
-        status: 'pending'
-      }]);
+      // --- IMPORTANT: This is a simplified client-side transaction logic. ---
+      // For production-grade applications, especially for financial transactions,
+      // it is highly recommended to perform sensitive operations like
+      // updating balances via secure server-side functions (e.g., Supabase Functions,
+      // Next.js API Routes, or Server Actions) to enforce security rules and prevent tampering.
 
-      if (insertError) throw insertError;
-
-      // Update account balance
-      const { error: updateError } = await supabase
-        .from('accounts')
-        .update({ balance: balance - amt })
+      // Fetch current balance
+      const { data: currentBalanceData, error: fetchError } = await supabase
+        .from('balances')
+        .select('amount')
         .eq('user_id', userId)
-        .eq('type', accountType);
+        .single();
 
-      if (updateError) throw updateError;
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "No rows found"
+        throw fetchError;
+      }
 
-      // Update withdrawal count in profile
-      await supabase
-        .from('profiles')
-        .update({ withdrawal_count: withdrawalCount + 1 })
-        .eq('id', userId);
+      const currentBalance = currentBalanceData?.amount || 0;
 
-      setAmount('');
-      setForm({
-        bankName: '',
-        routingNumber: '',
-        accountNumber: '',
-        accountName: '',
-        swiftCode: ''
-      });
+      if (amount > currentBalance) {
+        toast.error('Insufficient funds.');
+        setLoading(false);
+        return;
+      }
 
-      if (onSuccess) {
-        onSuccess({
-          amount: amt,
-          bankName: form.bankName,
-          routingNumber: form.routingNumber,
-          accountNumber: form.accountNumber,
-          transferType: method
+      const newBalance = currentBalance - amount;
+
+      // Update balance
+      const { error: updateError } = await supabase
+        .from('balances')
+        .upsert(
+          { user_id: userId, amount: newBalance },
+          { onConflict: 'user_id' }
+        );
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      // Record the withdrawal transaction
+      const { error: transactionError } = await supabase
+        .from('transactions') // Assuming a 'transactions' table
+        .insert({
+          sender_user_id: userId,
+          amount: amount,
+          type: 'withdrawal',
+          status: 'completed',
+          // For withdrawals, receiver_account_number, bank_name, routing_number, method
+          // might be required depending on your schema. For simplicity, leaving them out
+          // or setting to defaults if not directly applicable.
+          receiver_account_number: 'N/A', // Placeholder
+          bank_name: 'N/A', // Placeholder
+          routing_number: 'N/A', // Placeholder
+          method: 'Bank Transfer', // Example method
         });
+
+      if (transactionError) {
+        console.error('Error recording withdrawal transaction:', transactionError.message);
+        // Even if transaction recording fails, balance update might have succeeded.
+        // Consider robust rollback/compensation logic for production.
       }
-    } catch (err) {
-      if (onError) {
-        onError('Failed to process withdrawal. Please try again.');
-      }
-      console.error('Withdrawal error:', err);
+
+      toast.success('Withdrawal successful!');
+      setAmount(0); // Reset amount input
+      onWithdrawSuccess(); // Trigger callback to refresh parent component's data (e.g., balance)
+
+    } catch (error: any) {
+      console.error('Withdrawal error:', error.message);
+      toast.error(`Withdrawal failed: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="bg-white p-6 rounded shadow-md">
-      <h2 className="text-xl font-semibold mb-4 text-indigo-800">Withdraw Funds</h2>
-
-      {error && (
-        <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
-          <p className="text-red-700">{error}</p>
-        </div>
-      )}
-
-      {isFinalWithdrawal && !feePaid ? (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-          <p className="text-yellow-700 font-medium">Admin Fee Required</p>
-          <p className="text-sm">You have reached the withdrawal limit. Pay the $500 fee to unlock further withdrawals.</p>
-          <div className="mt-2 text-sm">
-            <p><strong>Account Name:</strong> Asaba Admin</p>
-            <p><strong>Account Number:</strong> 9876-5432-2100</p>
-            <p><strong>Bank Name:</strong> Asaba National Bank</p>
-            <p><strong>Routing Number:</strong> 021000021</p>
-            <p><strong>SWIFT Code:</strong> ASBNUS33</p>
-            <p><strong>Support Email:</strong> support@asababank.com</p>
-          </div>
-        </div>
-      ) : null}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block font-medium mb-2">Account Type</label>
-          <select
-            className="w-full p-2 border rounded"
-            value={accountType}
-            onChange={(e) => setAccountType(e.target.value as 'Checking' | 'Savings')}
-            disabled={disabled}
-          >
-            <option value="Checking">Checking Account</option>
-            <option value="Savings">Savings Account</option>
-          </select>
-          <p className="mt-1 text-sm text-gray-500">Available balance: ${formattedBalance}</p>
-        </div>
-
-        <div>
-          <label className="block font-medium mb-2">Amount ($)</label>
+    <div className="bg-white p-6 rounded-lg shadow-md">
+      <h2 className="text-2xl font-bold mb-4">Withdraw Funds</h2>
+      <form onSubmit={handleWithdraw}>
+        <div className="mb-4">
+          <label htmlFor="withdrawAmount" className="block text-gray-700 text-sm font-bold mb-2">
+            Amount
+          </label>
           <input
             type="number"
-            step="0.01"
-            className="w-full p-2 border rounded"
+            id="withdrawAmount"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            disabled={disabled}
+            onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+            min="0"
+            required
+            disabled={loading}
           />
         </div>
-
-        <div>
-          <label className="block font-medium mb-2">Method</label>
-          <select
-            className="w-full p-2 border rounded"
-            value={method}
-            onChange={(e) => setMethod(e.target.value as 'ACH' | 'Wire')}
-            disabled={disabled}
-          >
-            <option value="ACH">ACH Transfer</option>
-            <option value="Wire">Wire Transfer</option>
-          </select>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <input
-            placeholder="Bank Name"
-            className="p-2 border rounded"
-            value={form.bankName}
-            onChange={(e) => setForm({ ...form, bankName: e.target.value })}
-            disabled={disabled}
-          />
-          <input
-            placeholder="Routing Number"
-            className="p-2 border rounded"
-            value={form.routingNumber}
-            onChange={(e) => setForm({ ...form, routingNumber: e.target.value })}
-            disabled={disabled}
-          />
-          <input
-            placeholder="Account Number"
-            className="p-2 border rounded"
-            value={form.accountNumber}
-            onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
-            disabled={disabled}
-          />
-          <input
-            placeholder="Account Name"
-            className="p-2 border rounded"
-            value={form.accountName}
-            onChange={(e) => setForm({ ...form, accountName: e.target.value })}
-            disabled={disabled}
-          />
-          {method === 'Wire' && (
-            <input
-              placeholder="SWIFT Code"
-              className="p-2 border rounded col-span-full"
-              value={form.swiftCode}
-              onChange={(e) => setForm({ ...form, swiftCode: e.target.value })}
-              disabled={disabled}
-            />
-          )}
-        </div>
-
         <button
           type="submit"
-          disabled={loading || disabled}
-          className={`w-full p-3 rounded text-white font-semibold ${
-            loading || disabled
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-indigo-600 hover:bg-indigo-700'
-          }`}
+          className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+          disabled={loading}
         >
-          {loading ? 'Processing...' : 'Submit Withdrawal'}
+          {loading ? 'Processing...' : 'Withdraw'}
         </button>
       </form>
     </div>
