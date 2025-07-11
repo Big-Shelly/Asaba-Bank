@@ -1,116 +1,101 @@
-import { useState } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
-import toast from 'react-hot-toast';
+// components/dashboard/NewRecipientForm.tsx
+'use client'; // This directive marks the component as a Client Component.
 
-export default function NewRecipientForm({ userId, onSuccess }: {
+import { useState } from 'react';
+// Import createBrowserClient for client-side Supabase interactions.
+import { createBrowserClient } from '@supabase/ssr';
+import toast from 'react-hot-toast'; // Assuming you have react-hot-toast installed
+
+interface NewRecipientFormProps {
   userId: string;
-  onSuccess?: () => void;
-}) {
-  const supabase = useSupabaseClient();
-  const [form, setForm] = useState({
-    name: '',
-    bankName: '',
-    routingNumber: '',
-    accountNumber: '',
-    swiftCode: '',
-  });
+  onSuccess: () => void;
+}
+
+export default function NewRecipientForm({ userId, onSuccess }: NewRecipientFormProps) {
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientAccountNumber, setRecipientAccountNumber] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Initialize the Supabase client for client-side use.
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const { name, bankName, routingNumber, accountNumber } = form;
-    if (!name || !bankName || !routingNumber || !accountNumber) {
-      toast.error('Please fill in all required fields');
+    if (!recipientName || !recipientAccountNumber) {
+      toast.error('Please fill in all fields.');
       setLoading(false);
       return;
     }
 
-    const { error } = await supabase.from('recipients').insert([
-      {
-        user_id: userId,
-        name: form.name,
-        bank_name: form.bankName,
-        routing_number: form.routingNumber,
-        account_number: form.accountNumber,
-        swift_code: form.swiftCode,
-      },
-    ]);
+    try {
+      const { data, error } = await supabase
+        .from('recipients') // Assuming you have a 'recipients' table
+        .insert({
+          user_id: userId,
+          name: recipientName,
+          account_number: recipientAccountNumber,
+        })
+        .select(); // Select the newly inserted row to confirm
 
-    if (error) {
-      console.error(error);
-      toast.error('Failed to add recipient');
-    } else {
-      toast.success('Recipient added successfully');
-      setForm({
-        name: '',
-        bankName: '',
-        routingNumber: '',
-        accountNumber: '',
-        swiftCode: '',
-      });
-      onSuccess?.();
+      if (error) {
+        throw error;
+      }
+
+      toast.success('Recipient added successfully!');
+      setRecipientName('');
+      setRecipientAccountNumber('');
+      onSuccess(); // Call the onSuccess callback from parent component
+    } catch (error: any) {
+      console.error('Error adding recipient:', error.message);
+      toast.error(`Failed to add recipient: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow space-y-4 mt-6">
-      <h3 className="text-lg font-semibold text-indigo-800">Add New Recipient</h3>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <input
-          type="text"
-          placeholder="Recipient Name"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          className="p-2 border rounded"
-          required
-        />
-        <input
-          type="text"
-          placeholder="Bank Name"
-          value={form.bankName}
-          onChange={(e) => setForm({ ...form, bankName: e.target.value })}
-          className="p-2 border rounded"
-          required
-        />
-        <input
-          type="text"
-          placeholder="Routing Number"
-          value={form.routingNumber}
-          onChange={(e) => setForm({ ...form, routingNumber: e.target.value })}
-          className="p-2 border rounded"
-          required
-        />
-        <input
-          type="text"
-          placeholder="Account Number"
-          value={form.accountNumber}
-          onChange={(e) => setForm({ ...form, accountNumber: e.target.value })}
-          className="p-2 border rounded"
-          required
-        />
-        <input
-          type="text"
-          placeholder="SWIFT Code (Optional)"
-          value={form.swiftCode}
-          onChange={(e) => setForm({ ...form, swiftCode: e.target.value })}
-          className="p-2 border rounded col-span-full"
-        />
-      </div>
-
-      <button
-        type="submit"
-        disabled={loading}
-        className={`w-full p-3 text-white font-semibold rounded ${
-          loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
-        }`}
-      >
-        {loading ? 'Saving...' : 'Add Recipient'}
-      </button>
-    </form>
+    <div className="bg-white p-6 rounded-lg shadow-md">
+      <h2 className="text-2xl font-bold mb-4">Add New Recipient</h2>
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4">
+          <label htmlFor="recipientName" className="block text-gray-700 text-sm font-bold mb-2">
+            Recipient Name
+          </label>
+          <input
+            type="text"
+            id="recipientName"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            value={recipientName}
+            onChange={(e) => setRecipientName(e.target.value)}
+            required
+          />
+        </div>
+        <div className="mb-4">
+          <label htmlFor="recipientAccountNumber" className="block text-gray-700 text-sm font-bold mb-2">
+            Account Number
+          </label>
+          <input
+            type="text"
+            id="recipientAccountNumber"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            value={recipientAccountNumber}
+            onChange={(e) => setRecipientAccountNumber(e.target.value)}
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+          disabled={loading}
+        >
+          {loading ? 'Adding...' : 'Add Recipient'}
+        </button>
+      </form>
+    </div>
   );
 }
