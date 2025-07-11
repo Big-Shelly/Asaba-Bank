@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { useAuth } from '@/hooks/useAuth';
 import DepositModal from './DepositModal';
 
