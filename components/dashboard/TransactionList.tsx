@@ -25,6 +25,13 @@ interface Transaction {
   routing_number?: string;
   // account_number is already present, but ensure its type matches if it was different
   method?: string; // e.g., 'bank_transfer', 'card', 'cash'
+
+  // Crucial fix: Add 'account_number' as a required property,
+  // as the 'Transactions' component explicitly requires it.
+  // This assumes that your database query will return a field named 'account_number'
+  // or that 'receiver_account_number' should be mapped to 'account_number' before passing.
+  // For simplicity, I'm adding it as a separate required field.
+  account_number: string;
 }
 
 // Define the props for the TransactionList component
@@ -70,7 +77,15 @@ export default function TransactionList({}: TransactionListProps) {
           throw fetchError;
         }
 
-        setTransactions(data || []); // Update state with fetched transactions, or an empty array if null
+        // Before setting transactions, ensure each object has the 'account_number' property
+        // This is a crucial step if your database column is 'receiver_account_number'
+        // but the 'Transactions' component expects 'account_number'.
+        const formattedTransactions = (data || []).map(t => ({
+          ...t,
+          account_number: t.receiver_account_number // Map receiver_account_number to account_number
+        })) as Transaction[]; // Assert type after mapping
+
+        setTransactions(formattedTransactions); // Update state with fetched transactions, or an empty array if null
       } catch (err: any) {
         console.error('Error fetching transactions:', err.message);
         setError(`Failed to load transactions: ${err.message}`);
