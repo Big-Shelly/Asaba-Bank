@@ -1,255 +1,211 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
-import { useAuth } from '@/hooks/useAuth';
+// components/dashboard/Tickets.tsx
+'use client'; // This directive marks the component as a Client Component.
 
+import { useState, useEffect, useCallback } from 'react';
+// Import createBrowserClient for client-side Supabase interactions.
+// This is the correct way to initialize the Supabase client in client components
+// for Next.js App Router.
+import { createBrowserClient } from '@supabase/ssr';
+import { useAuth } from '@/hooks/useAuth'; // Assuming useAuth is a client-side hook
+import toast from 'react-hot-toast'; // Assuming react-hot-toast is used for notifications
+
+// Define the interface for a Ticket object, matching your Supabase table structure
 interface Ticket {
   id: string;
+  user_id: string;
   subject: string;
-  message: string;
-  status: 'open' | 'closed';
+  description: string;
+  status: 'open' | 'closed' | 'pending'; // Example statuses
   created_at: string;
-  email: string;
+  updated_at: string;
 }
 
-const COMMON_SUPPORT_TOPICS = [
-  {
-    subject: 'How do I reset my password?',
-    answer:
-      'To reset your password, go to the login page and click "Forgot password?". You will receive an email with instructions.',
-  },
-  {
-    subject: 'How to update my account details?',
-    answer:
-      'You can update your account details from the dashboard under the "Profile" section.',
-  },
-  {
-    subject: 'When will my deposit clear?',
-    answer:
-      'Deposits usually clear within 2 business days. Checks clear daily and direct deposits come 2 days early.',
-  },
-  {
-    subject: 'How do I generate statements?',
-    answer:
-      'You can generate account statements in the Support section by selecting the "Statements" option and entering your email.',
-  },
-];
+// Define the props for the Tickets component
+interface TicketsProps {
+  // If this component receives any props, define them here.
+  // For example, if it needs a specific user ID passed from a parent:
+  // userId: string;
+}
 
-export default function Tickets() {
-  const supabase = useSupabaseClient();
+export default function Tickets({}: TicketsProps) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const { user, isLoading } = useAuth();
+  const [newTicketSubject, setNewTicketSubject] = useState<string>('');
+  const [newTicketDescription, setNewTicketDescription] = useState<string>('');
+  const { user } = useAuth(); // Get user from your auth hook
 
-  // New ticket form state
-  const [newSubject, setNewSubject] = useState('');
-  const [newMessage, setNewMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  // Initialize the Supabase client for client-side use.
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
-  // Common topics toggle state
-  const [expandedTopics, setExpandedTopics] = useState<string[]>([]);
-
+  // useCallback to memoize the fetchTickets function
   const fetchTickets = useCallback(async () => {
-    if (!user) return;
+    if (!user?.id) {
+      setError('User not authenticated. Cannot fetch tickets.');
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
-    const { data, error } = await supabase
-      .from('tickets')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+    setError(null);
 
-    if (!error && data) {
-      const now = new Date();
-      for (const ticket of data) {
-        const createdTime = new Date(ticket.created_at);
-        const diffInHours = (now.getTime() - createdTime.getTime()) / (1000 * 60 * 60);
-        if (ticket.status === 'open' && diffInHours > 48) {
-          await supabase.from('tickets').update({ status: 'closed' }).eq('id', ticket.id);
-          ticket.status = 'closed';
-          // Email auto-response should be handled backend or separate process
-        }
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('tickets') // Query the 'tickets' table
+        .select('*') // Select all columns
+        .eq('user_id', user.id) // Filter by the current user's ID
+        .order('created_at', { ascending: false }); // Order by creation date, newest first
+
+      if (fetchError) {
+        throw fetchError;
       }
-      setTickets(data);
-    } else {
-      setTickets([]);
+
+      setTickets(data || []); // Update state with fetched tickets, or an empty array if null
+    } catch (err: any) {
+      console.error('Error fetching tickets:', err.message);
+      setError(`Failed to load tickets: ${err.message}`);
+      toast.error(`Failed to load tickets: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [user]);
+  }, [user?.id, supabase]); // Dependencies: re-run if user.id or supabase client changes
 
+  // useEffect to call fetchTickets when the component mounts or dependencies change
   useEffect(() => {
-    if (!user) return;
-
     fetchTickets();
+  }, [fetchTickets]); // Dependency: fetchTickets memoized function
 
-    const ticketsChannel = supabase
-      .channel('public:tickets')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tickets', filter: `user_id=eq.${user.id}` },
-        () => {
-          fetchTickets();
-        }
-      )
-      .subscribe();
+  // Function to handle submitting a new ticket
+  const handleCreateTicket = async (e: React.FormEvent) => {
+    e.preventDefault();
 
-    return () => {
-      supabase.removeChannel(ticketsChannel);
-    };
-  }, [user, fetchTickets]);
+    if (!user?.id) {
+      toast.error('You must be logged in to create a ticket.');
+      return;
+    }
+    if (!newTicketSubject || !newTicketDescription) {
+      toast.error('Please fill in both subject and description.');
+      return;
+    }
 
-  if (!user) return null;
-  if (loading) return <p>Loading tickets...</p>;
+    setLoading(true); // Set loading state for the form submission
+    setError(null);
 
-  function toggleTopic(subject: string) {
-    setExpandedTopics((prev) =>
-      prev.includes(subject)
-        ? prev.filter((s) => s !== subject)
-        : [...prev, subject]
-    );
+    try {
+      const { data, error: insertError } = await supabase
+        .from('tickets')
+        .insert({
+          user_id: user.id,
+          subject: newTicketSubject,
+          description: newTicketDescription,
+          status: 'open', // Default status for new tickets
+        })
+        .select() // Select the inserted row to get its data
+        .single(); // Expect a single new ticket
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      // Add the new ticket to the beginning of the list
+      setTickets(prevTickets => [data, ...prevTickets]);
+      setNewTicketSubject(''); // Clear form fields
+      setNewTicketDescription('');
+      toast.success('Ticket created successfully!');
+    } catch (err: any) {
+      console.error('Error creating ticket:', err.message);
+      toast.error(`Failed to create ticket: ${err.message}`);
+      setError(`Failed to create ticket: ${err.message}`);
+    } finally {
+      setLoading(false); // Reset loading state
+    }
+  };
+
+  if (loading && !tickets.length) { // Show loading only if no tickets are loaded yet
+    return <div className="text-center p-6">Loading tickets...</div>;
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newSubject.trim() || !newMessage.trim()) return;
-    setSubmitting(true);
-
-    const { error } = await supabase.from('tickets').insert([
-      {
-        user_id: user.id,
-        email: user.email,
-        subject: newSubject.trim(),
-        message: newMessage.trim(),
-        status: 'open',
-      },
-    ]);
-
-    if (error) {
-      alert('Failed to submit ticket: ' + error.message);
-    } else {
-      setNewSubject('');
-      setNewMessage('');
-    }
-
-    setSubmitting(false);
+  if (error) {
+    return <div className="text-center p-6 text-red-600">Error: {error}</div>;
   }
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <h2 className="text-2xl font-bold text-indigo-800">Your Support Tickets</h2>
-
-      {/* Common support topics */}
-      <section className="mb-8 bg-white shadow rounded p-4 border border-gray-300">
-        <h3 className="text-xl font-semibold mb-4">Common Support Topics</h3>
-        {COMMON_SUPPORT_TOPICS.map(({ subject, answer }) => {
-          const isExpanded = expandedTopics.includes(subject);
-          return (
-            <div key={subject} className="mb-3 border-b border-gray-200 pb-2">
-              <button
-                onClick={() => toggleTopic(subject)}
-                className="w-full text-left font-medium text-indigo-700 hover:text-indigo-900 focus:outline-none flex justify-between items-center"
-                aria-expanded={isExpanded}
-              >
-                {subject}
-                <span className="ml-2">{isExpanded ? '▲' : '▼'}</span>
-              </button>
-              {isExpanded && (
-                <p className="mt-2 text-gray-700 whitespace-pre-line">{answer}</p>
-              )}
-            </div>
-          );
-        })}
-      </section>
-
-      {/* Existing tickets */}
-      {tickets.length === 0 ? (
-        <p className="text-gray-500">You have no support tickets.</p>
-      ) : (
-        tickets.map((ticket) => (
-          <div
-            key={ticket.id}
-            className="bg-white shadow rounded p-4 border border-gray-200"
-          >
-            <div className="flex justify-between">
-              <h3 className="font-semibold text-lg">{ticket.subject}</h3>
-              <span
-                className={`text-sm px-2 py-1 rounded ${
-                  ticket.status === 'open'
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-green-100 text-green-800'
-                }`}
-              >
-                {ticket.status.toUpperCase()}
-              </span>
-            </div>
-            <p className="mt-2 text-gray-700 whitespace-pre-line">{ticket.message}</p>
-            <p className="mt-2 text-sm text-gray-500">
-              Submitted on {new Date(ticket.created_at).toLocaleString()}
-            </p>
-          </div>
-        ))
-      )}
+    <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+      <h2 className="text-2xl font-bold mb-4">Your Support Tickets</h2>
 
       {/* New Ticket Form */}
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white shadow rounded p-6 border border-gray-300 mt-8"
-      >
-        <h3 className="text-xl font-semibold mb-4">Submit a New Ticket</h3>
-
-        <label className="block mb-2 font-medium" htmlFor="name">
-          Name
-        </label>
-        <input
-          id="name"
-          type="text"
-          value={user?.user_metadata?.full_name ?? user?.email ?? ''}
-          readOnly
-          className="w-full border border-gray-300 rounded p-2 mb-4 bg-gray-100 cursor-not-allowed"
-        />
-
-        <label className="block mb-2 font-medium" htmlFor="subject">
-          Subject
-        </label>
-        <input
-          id="subject"
-          type="text"
-          value={newSubject}
-          onChange={(e) => setNewSubject(e.target.value)}
-          placeholder="Enter ticket subject"
-          className="w-full border border-gray-300 rounded p-2 mb-4"
-          required
-          disabled={submitting}
-          list="common-subjects"
-        />
-        <datalist id="common-subjects">
-          {COMMON_SUPPORT_TOPICS.map(({ subject }) => (
-            <option key={subject} value={subject} />
-          ))}
-        </datalist>
-
-        <label className="block mb-2 font-medium" htmlFor="message">
-          Message
-        </label>
-        <textarea
-          id="message"
-          rows={4}
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Describe your issue in detail"
-          className="w-full border border-gray-300 rounded p-2 mb-4"
-          required
-          disabled={submitting}
-        ></textarea>
-
+      <form onSubmit={handleCreateTicket} className="mb-8 p-4 border rounded-lg bg-gray-50">
+        <h3 className="text-xl font-semibold mb-3">Create New Ticket</h3>
+        <div className="mb-3">
+          <label htmlFor="subject" className="block text-gray-700 text-sm font-bold mb-1">
+            Subject
+          </label>
+          <input
+            type="text"
+            id="subject"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+            value={newTicketSubject}
+            onChange={(e) => setNewTicketSubject(e.target.value)}
+            required
+            disabled={loading}
+          />
+        </div>
+        <div className="mb-4">
+          <label htmlFor="description" className="block text-gray-700 text-sm font-bold mb-1">
+            Description
+          </label>
+          <textarea
+            id="description"
+            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline h-24 resize-none"
+            value={newTicketDescription}
+            onChange={(e) => setNewTicketDescription(e.target.value)}
+            required
+            disabled={loading}
+          ></textarea>
+        </div>
         <button
           type="submit"
-          className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 disabled:opacity-50"
-          disabled={submitting}
+          className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+          disabled={loading}
         >
-          {submitting ? 'Submitting...' : 'Submit Ticket'}
+          {loading ? 'Submitting...' : 'Submit Ticket'}
         </button>
       </form>
+
+      {/* Display Tickets */}
+      {tickets.length === 0 ? (
+        <p className="text-gray-600">You have no support tickets yet.</p>
+      ) : (
+        <ul className="space-y-4">
+          {tickets.map((ticket) => (
+            <li key={ticket.id} className="p-4 border border-gray-200 rounded-md shadow-sm bg-white">
+              <div className="flex justify-between items-center mb-2">
+                <p className="font-semibold text-lg">{ticket.subject}</p>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  ticket.status === 'open' ? 'bg-blue-100 text-blue-800' :
+                  ticket.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                  'bg-gray-100 text-gray-800'
+                }`}>
+                  {ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}
+                </span>
+              </div>
+              <p className="text-gray-700 text-sm mb-2">{ticket.description}</p>
+              <p className="text-gray-500 text-xs">
+                Created: {new Date(ticket.created_at).toLocaleString()}
+              </p>
+              {ticket.updated_at && ticket.created_at !== ticket.updated_at && (
+                <p className="text-gray-500 text-xs">
+                  Last Updated: {new Date(ticket.updated_at).toLocaleString()}
+                </p>
+              )}
+              {/* You might add buttons here to view ticket details, close, etc. */}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
