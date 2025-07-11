@@ -1,0 +1,22 @@
+import { serve } from 'https://deno.land/std@0.131.0/http/server.ts';
+
+serve(async (req) => {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0] || 'unknown';
+
+  const geoRes = await fetch(`https://ipapi.co/${ip}/json`);
+  const geo = await geoRes.json();
+
+  const allowed = geo && geo.country_code === 'US';
+
+  return new Response(
+    JSON.stringify({
+      allowed,
+      country: geo?.country_name || 'Unknown',
+      ip
+    }),
+    {
+      headers: { 'Content-Type': 'application/json' },
+      status: allowed ? 200 : 403,
+    }
+  );
+});
