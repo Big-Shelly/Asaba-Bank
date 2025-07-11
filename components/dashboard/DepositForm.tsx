@@ -1,4 +1,4 @@
-// components/forms/DepositForm.tsx
+// components/forms/DepositForm.ts
 'use client'; // This directive marks the component as a Client Component.
 
 import { useState, useEffect } from 'react';
