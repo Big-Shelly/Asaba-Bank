@@ -20,17 +20,12 @@ interface Transaction {
   status: 'completed' | 'pending' | 'failed'; // Example statuses
   created_at: string;
   type: 'deposit' | 'withdrawal' | 'transfer'; // Example transaction types
-  // Added properties based on the error message:
-  bank_name?: string; // Assuming these might be optional or only present for certain types
-  routing_number?: string;
-  // account_number is already present, but ensure its type matches if it was different
-  method?: string; // e.g., 'bank_transfer', 'card', 'cash'
+  // Crucial fix: Make these properties required strings, and ensure they are mapped to strings.
+  bank_name: string;
+  routing_number: string;
+  method: string; // e.g., 'bank_transfer', 'card', 'cash'
 
-  // Crucial fix: Add 'account_number' as a required property,
-  // as the 'Transactions' component explicitly requires it.
-  // This assumes that your database query will return a field named 'account_number'
-  // or that 'receiver_account_number' should be mapped to 'account_number' before passing.
-  // For simplicity, I'm adding it as a separate required field.
+  // 'account_number' was already made required in the previous fix.
   account_number: string;
 }
 
@@ -77,12 +72,15 @@ export default function TransactionList({}: TransactionListProps) {
           throw fetchError;
         }
 
-        // Before setting transactions, ensure each object has the 'account_number' property
-        // This is a crucial step if your database column is 'receiver_account_number'
-        // but the 'Transactions' component expects 'account_number'.
+        // Before setting transactions, ensure each object has the required 'string' properties.
+        // Map receiver_account_number to account_number, and ensure other required fields
+        // are strings, defaulting to an empty string if they are null/undefined from the DB.
         const formattedTransactions = (data || []).map(t => ({
           ...t,
-          account_number: t.receiver_account_number // Map receiver_account_number to account_number
+          account_number: t.receiver_account_number || '', // Ensure account_number is always a string
+          bank_name: t.bank_name || '', // Ensure bank_name is always a string
+          routing_number: t.routing_number || '', // Ensure routing_number is always a string
+          method: t.method || '', // Ensure method is always a string
         })) as Transaction[]; // Assert type after mapping
 
         setTransactions(formattedTransactions); // Update state with fetched transactions, or an empty array if null
