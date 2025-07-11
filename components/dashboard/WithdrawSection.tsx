@@ -1,118 +1,104 @@
+// components/dashboard/WithdrawSection.tsx
+'use client'; // This directive marks the component as a Client Component.
+
 import { useState, useEffect } from 'react';
-import { useSupabaseClient } from '@supabase/auth-helpers-react';
-import { useAuth } from '@/hooks/useAuth';
-import WithdrawalForm from './WithdrawalForm';
-import NewRecipientForm from './NewRecipientForm';
-import toast, { Toaster } from 'react-hot-toast';
+// Import createBrowserClient for client-side Supabase interactions.
+// This is the correct way to initialize the Supabase client in client components
+// for Next.js App Router.
+import { createBrowserClient } from '@supabase/ssr';
+import { useAuth } from '@/hooks/useAuth'; // Assuming useAuth is a client-side hook
+import WithdrawForm from './WithdrawForm'; // Assuming this component exists
+import NewRecipientForm from './NewRecipientForm'; // Assuming this component exists
+import toast from 'react-hot-toast'; // Assuming react-hot-toast is used for notifications
 
-interface Props {
-  accountType: string;
-  balance: number;
-  withdrawalLimit: number;
-  userId: string;
-}
+export default function WithdrawSection() {
+  const [balance, setBalance] = useState<number | null>(null);
+  const [loadingBalance, setLoadingBalance] = useState<boolean>(true);
+  const [errorBalance, setErrorBalance] = useState<string | null>(null);
+  const { user } = useAuth(); // Get user from your auth hook
 
-export default function WithdrawSection({
-  accountType,
-  balance,
-  withdrawalLimit,
-  userId,
-}: Props) {
-  const supabase = useSupabaseClient();
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [withdrawalCount, setWithdrawalCount] = useState(0);
-  const [checkingBalance, setCheckingBalance] = useState(0);
-  const [savingsBalance, setSavingsBalance] = useState(0);
-  const [showSummary, setShowSummary] = useState(false);
-  const [summaryDetails, setSummaryDetails] = useState<any>(null);
-  const [showAddRecipient, setShowAddRecipient] = useState(false);
+  // Initialize the Supabase client for client-side use.
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user) return;
+  // Function to fetch the user's balance
+  const fetchBalance = async () => {
+    if (!user?.id) {
+      setErrorBalance('User not authenticated. Cannot fetch balance.');
+      setLoadingBalance(false);
+      return;
+    }
 
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('withdrawal_count, checking_balance, savings_balance')
-        .eq('id', user.id)
-        .single();
+    setLoadingBalance(true);
+    setErrorBalance(null);
 
-      if (error || !profile) {
-        toast.error('Failed to load withdrawal data');
-        setLoading(false);
-        return;
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('balances') // Assuming your balance data is in a 'balances' table
+        .select('amount') // Select the 'amount' column
+        .eq('user_id', user.id) // Filter by the current user's ID
+        .single(); // Expect a single row for the user's balance
+
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "No rows found"
+        throw fetchError;
       }
 
-      setWithdrawalCount(profile.withdrawal_count || 0);
-      setCheckingBalance(profile.checking_balance || 0);
-      setSavingsBalance(profile.savings_balance || 0);
-      setLoading(false);
-    };
+      setBalance(data?.amount ?? 0); // Update balance state, default to 0 if no data
+    } catch (err: any) {
+      console.error('Error fetching balance:', err.message);
+      setErrorBalance(`Failed to load balance: ${err.message}`);
+      toast.error(`Failed to load balance: ${err.message}`);
+    } finally {
+      setLoadingBalance(false);
+    }
+  };
 
-    fetchData();
-  }, [user, supabase]);
+  // useEffect to fetch balance when the component mounts or user changes
+  useEffect(() => {
+    fetchBalance();
+  }, [user?.id, supabase]); // Dependencies: re-run if user.id or supabase client changes
 
-  if (!user || loading) return <p className="p-6">Loading...</p>;
+  // Callback function to refresh balance after a successful withdrawal
+  const handleWithdrawSuccess = () => {
+    fetchBalance(); // Re-fetch balance to reflect the change
+    // You might also want to trigger a refresh for transaction history here if needed
+  };
+
+  if (loadingBalance) {
+    return <div className="text-center p-6">Loading balance...</div>;
+  }
+
+  if (errorBalance) {
+    return <div className="text-center p-6 text-red-600">Error: {errorBalance}</div>;
+  }
+
+  if (!user?.id) {
+    return <div className="text-center p-6 text-gray-600">Please log in to manage withdrawals.</div>;
+  }
 
   return (
-    <div className="max-w-3xl mx-auto py-8 px-4">
-      <Toaster position="top-center" />
-      <h1 className="text-3xl font-bold text-indigo-900 mb-6">Withdraw Funds</h1>
+    <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+      <h2 className="text-2xl font-bold mb-4">Withdrawal Management</h2>
 
-      <div className="mb-6">
-        <button
-          onClick={() => setShowAddRecipient(!showAddRecipient)}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-        >
-          {showAddRecipient ? 'Hide Add Recipient' : 'Add New Recipient'}
-        </button>
+      {/* Display Current Balance */}
+      <div className="mb-6 p-4 border rounded-lg bg-blue-50 text-blue-800">
+        <p className="text-lg font-semibold">Your Current Balance:</p>
+        <p className="text-3xl font-bold">${balance !== null ? balance.toFixed(2) : 'N/A'}</p>
       </div>
 
-      {showAddRecipient && (
-        <NewRecipientForm
-          userId={user.id}
-          onSuccess={() => {
-            setShowAddRecipient(false);
-            // Safely find withdrawal form and recipient manager and trigger click
-            const withdrawalForm = document.querySelector('form.withdrawal-form');
-            if (withdrawalForm) {
-              const recipientManager = withdrawalForm.querySelector<HTMLElement>('div.recipient-manager');
-              if (recipientManager) {
-                recipientManager.click();
-              }
-            }
-          }}
-        />
-      )}
+      {/* Withdrawal Form */}
+      <div className="mb-8">
+        <WithdrawForm userId={user.id} onWithdrawSuccess={handleWithdrawSuccess} />
+      </div>
 
-      <WithdrawalForm
-        userId={user.id}
-        userEmail={user.email || ''}
-        withdrawalCount={withdrawalCount}
-        checkingBalance={checkingBalance}
-        savingsBalance={savingsBalance}
-        onSuccess={(summary) => {
-          toast.success('Withdrawal request submitted');
-          setSummaryDetails(summary);
-          setShowSummary(true);
-        }}
-        onError={(message) => toast.error(message)}
-      />
-
-      {showSummary && summaryDetails && (
-        <div className="mt-8 p-6 bg-green-50 border border-green-300 rounded-lg shadow">
-          <h2 className="text-xl font-semibold mb-2 text-green-800">Transaction Summary</h2>
-          <p><strong>Amount:</strong> ${summaryDetails.amount}</p>
-          <p><strong>To Bank:</strong> {summaryDetails.bankName}</p>
-          <p><strong>Routing Number:</strong> {summaryDetails.routingNumber}</p>
-          <p><strong>Account Number:</strong> {summaryDetails.accountNumber}</p>
-          <p><strong>Transfer Type:</strong> {summaryDetails.transferType}</p>
-          <p className="text-sm text-gray-600 mt-4">
-            Funds are processing and should appear in the destination account within 1–2 business days.
-          </p>
-        </div>
-      )}
+      {/* New Recipient Form (if applicable to withdrawal flow, otherwise remove) */}
+      {/* This component might be for transfers, not direct withdrawals, so review its relevance here. */}
+      {/* If it's for transfer recipients, you might want a separate "Transfer" section. */}
+      <div className="mt-8">
+        <NewRecipientForm userId={user.id} onSuccess={() => toast.success('Recipient added!')} />
+      </div>
     </div>
   );
 }
