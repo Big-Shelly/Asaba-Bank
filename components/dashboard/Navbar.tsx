@@ -27,7 +27,8 @@ export default function Navbar({}: NavbarProps) {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        setUserEmail(user.email);
+        // Corrected: Use nullish coalescing operator (??) to convert undefined to null
+        setUserEmail(user.email ?? null);
       } else {
         setUserEmail(null);
       }
@@ -38,7 +39,8 @@ export default function Navbar({}: NavbarProps) {
     // Listen for auth state changes to update the user's email dynamically
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        setUserEmail(session.user.email);
+        // Corrected: Use nullish coalescing operator (??) to convert undefined to null
+        setUserEmail(session.user.email ?? null);
       } else {
         setUserEmail(null);
       }
@@ -55,6 +57,7 @@ export default function Navbar({}: NavbarProps) {
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error('Error logging out:', error.message);
+      // Replace alert() with a custom message box for better UX in production
       alert('Logout failed.');
     } else {
       setUserEmail(null); // Clear user email on successful logout
