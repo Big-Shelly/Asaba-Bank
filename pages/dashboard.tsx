@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth'; // Assuming useAuth is your custom au
 // Import createBrowserClient for client-side Supabase interactions.
 import { createBrowserClient } from '@supabase/ssr';
 import DepositSection from '@/components/dashboard/DepositSection'; // Assuming these components exist
-import WithdrawalForm from '@/components/dashboard/WithdrawalForm';
+import WithdrawalForm from '@/components/dashboard/WithdrawalForm'; // Import WithdrawalForm
 import TransactionList from '@/components/dashboard/TransactionList';
 import RecipientManager from '@/components/dashboard/RecipientManager';
 import Tickets from '@/components/dashboard/Tickets';
@@ -116,6 +116,12 @@ export default function DashboardPage() {
     }
   }, [user, authLoading, supabase]); // Dependencies
 
+  // Callback function to refresh balance and transactions after a successful withdrawal
+  const handleWithdrawSuccess = () => {
+    fetchData(); // Re-fetch all dashboard data
+    toast.success('Withdrawal successful!'); // Optional: Add a success toast here as well
+  };
+
   if (authLoading || loadingData) {
     return (
       <Layout>
@@ -166,8 +172,10 @@ export default function DashboardPage() {
 
         {/* Deposit and Withdrawal Forms */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <DepositSection /> {/* DepositSection already handles its own Supabase client */}
-          <WithdrawalForm /> {/* WithdrawalForm already handles its own Supabase client */}
+          {/* DepositSection already handles its own Supabase client and refresh */}
+          <DepositSection />
+          {/* Pass userId and onWithdrawSuccess to WithdrawalForm */}
+          <WithdrawalForm userId={user.id} onWithdrawSuccess={handleWithdrawSuccess} />
         </div>
 
         {/* Recent Transactions */}
